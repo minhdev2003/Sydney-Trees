@@ -1,0 +1,13 @@
+{
+  "run_id": "2026-09",
+  "published_at": "2026-10-09T13:34:33+00:00",
+  "n_trees": 673,
+  "files": {
+    "trees.geojson": "https://data.example.org/sydney-trees/2026-09/trees.geojson",
+    "trees.csv": "https://data.example.org/sydney-trees/2026-09/trees.csv",
+    "trees.parquet": "https://data.example.org/sydney-trees/2026-09/trees.parquet",
+    "suburbs.geojson": "https://data.example.org/sydney-trees/2026-09/suburbs.geojson",
+    "suburbs.csv": "https://data.example.org/sydney-trees/2026-09/suburbs.csv"
+  },
+  "licence": "CC BY 4.0"
+}

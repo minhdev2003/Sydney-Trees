@@ -1,0 +1,33 @@
+[project]
+name = "lynxx-trees"
+version = "0.1.0"
+description = "Part 2 demo: a small, runnable version of the Sydney tree-count production pipeline"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "pystac-client>=0.8",
+    "rasterio>=1.3.10",
+    "geopandas>=1.0",
+    "shapely>=2.0",
+    "pyproj>=3.6",
+    "pyarrow>=15",
+    "numpy<2.3",
+    "pandas>=2.2",
+    "requests>=2.31",
+    "pillow>=10",
+    "deepforest>=1.4",
+    "torch>=2.2",
+    "duckdb>=1.1",
+    "fastapi>=0.110",
+    "httpx>=0.27",
+    "mapbox-vector-tile>=2.1",
+    "mercantile>=1.2",
+    "matplotlib>=3.8",
+    "contextily>=1.6",
+    "jupyter>=1.0",
+    "nbconvert>=7.16",
+    "ipykernel>=6.29",
+]
+
+[tool.uv]
+package = false
