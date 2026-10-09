@@ -1,7 +1,7 @@
 {
   "run_id": "2026-09",
-  "published_at": "2026-10-09T13:34:33+00:00",
-  "n_trees": 673,
+  "published_at": "2026-10-09T23:49:53+00:00",
+  "n_trees": 652,
   "files": {
     "trees.geojson": "https://data.example.org/sydney-trees/2026-09/trees.geojson",
     "trees.csv": "https://data.example.org/sydney-trees/2026-09/trees.csv",

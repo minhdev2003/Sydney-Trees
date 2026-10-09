@@ -346,7 +346,7 @@ def predict_chip(path: str, patch_size: int = PATCH_SIZE) -> pd.DataFrame:
     return df
 
 
-def detect_trees(chips: gpd.GeoDataFrame, score_threshold: float = 0.2,
+def detect_trees(chips: gpd.GeoDataFrame, score_threshold: float = 0.15,
                  patch_size: int = PATCH_SIZE) -> gpd.GeoDataFrame:
     """Run the detector on every chip and return one crown polygon per tree (EPSG:4326).
 
@@ -374,6 +374,174 @@ def detect_trees(chips: gpd.GeoDataFrame, score_threshold: float = 0.2,
     trees = trees.to_crs("EPSG:4326")
     trees.insert(0, "tree_id", [f"T{i:06d}" for i in range(len(trees))])
     return trees
+
+
+# --------------------------------------------------------------------------- 3b. Lidar check
+
+ELVIS_DOWNLOADABLES_URL = "https://api.elevation.fsdf.org.au/elevation/downloadables"
+LIDAR_DIR = CACHE / "lidar"
+LIDAR_CRS = "EPSG:7856"  # fallback if a tile has no CRS in its header; Sydney202005 is GDA2020 / MGA 56
+LIDAR_MAX_TREE_M = 45     # taller "vegetation" is noise or rooftop planting on towers
+LIDAR_GROUND = 2
+LIDAR_VEGETATION = (3, 4, 5)  # low, medium and high vegetation (ASPRS classes)
+LIDAR_BUILDING = 6
+
+
+def find_lidar_tiles(bbox, survey_prefix: str = "Sydney") -> pd.DataFrame:
+    """Classified point-cloud tiles covering `bbox`, newest survey first, from the ELVIS catalogue.
+
+    The files sit in a Requester Pays S3 bucket, so they are either ordered free through
+    https://elevation.fsdf.org.au (emailed link) or fetched with AWS credentials.
+    """
+    cache = CACHE / f"elvis_{_key(bbox)}.json"
+    if cache.exists():
+        data = json.loads(cache.read_text())
+    else:
+        x0, y0, x1, y1 = bbox
+        polygon = f"POLYGON(({x0} {y0},{x1} {y0},{x1} {y1},{x0} {y1},{x0} {y0}))"
+        from urllib.parse import quote
+
+        r = _get(f"{ELVIS_DOWNLOADABLES_URL}?polygon={quote(polygon)}", {},  # the API rejects "+" for spaces
+                 headers={"Origin": "https://elevation.fsdf.org.au", "Referer": "https://elevation.fsdf.org.au/"})
+        data = r.json()
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps(data))
+
+    rows = []
+    for source in data.get("available_data", []):
+        for product, resolutions in (source.get("downloadables") or {}).items():
+            if product != "Point Clouds":
+                continue
+            for files in (resolutions or {}).values():
+                for f in files or []:
+                    name = f.get("file_name", "")
+                    if name.startswith(survey_prefix) and name.endswith(".laz"):
+                        rows.append({"survey": name.split("-")[0], "file_name": name,
+                                     "size_mb": round(float(f.get("file_size") or 0) / 1e6), "url": f.get("file_url")})
+    tiles = pd.DataFrame(rows, columns=["survey", "file_name", "size_mb", "url"])
+    if tiles.empty:
+        return tiles
+    newest = tiles["survey"].max()
+    return tiles[tiles["survey"] == newest].sort_values("file_name").reset_index(drop=True)
+
+
+@dataclass
+class LidarResult:
+    path: Path
+    survey: str
+    height: np.ndarray    # vegetation height above ground (m), 0 where there is no vegetation
+    building: np.ndarray  # True where building points were returned
+    transform: object
+    crs: str
+
+
+def lidar_rasters(bbox, tiles: pd.DataFrame, res_m: float = 1.0, folder: Path = LIDAR_DIR) -> LidarResult | None:
+    """Rasterise classified lidar into a vegetation height model and a building mask (2-band COG).
+
+    Ground height per cell is the lowest ground return, with gaps filled from neighbours.
+    Vegetation height is the highest vegetation return minus ground. Returns None, with
+    instructions, if the tiles have not been downloaded yet.
+    """
+    import rasterio
+    from rasterio.fill import fillnodata
+    from rasterio.transform import from_origin
+    from rasterio.warp import transform_bounds
+
+    survey = tiles["survey"].iloc[0] if len(tiles) else "unknown"
+    out = S3 / "raw" / "lidar" / survey / f"chm_{_key(bbox)}.tif"
+    if out.exists():
+        with rasterio.open(out) as src:
+            return LidarResult(out, survey, src.read(1), src.read(2).astype(bool), src.transform, str(src.crs))
+
+    # ELVIS downloads unpack into nested folders ("NSW Government - Spatial Services/Point Clouds/AHD/").
+    found = {p.name: p for p in folder.rglob("*.laz")} if folder.exists() else {}
+    paths = [found.get(name, folder / name) for name in tiles["file_name"]]
+    missing = [p.name for p in paths if not p.exists()]
+    if not paths or missing:
+        print(f"Lidar tiles not found in {folder}. Order them free from https://elevation.fsdf.org.au "
+              "(draw the demo area, choose NSW Spatial Services > Point Clouds > the newest Sydney survey), "
+              "then save these files there:\n  " + "\n  ".join(missing or ["(no tiles listed)"]))
+        return None
+
+    import laspy
+
+    with laspy.open(paths[0]) as reader:
+        header_crs = reader.header.parse_crs()
+    crs = header_crs.to_string() if header_crs else LIDAR_CRS
+
+    minx, miny, maxx, maxy = transform_bounds("EPSG:4326", crs, *bbox)
+    minx, miny = math.floor(minx) - 10, math.floor(miny) - 10
+    maxx, maxy = math.ceil(maxx) + 10, math.ceil(maxy) + 10
+    width, height = round((maxx - minx) / res_m), round((maxy - miny) / res_m)
+    ground = np.full((height, width), np.inf, dtype="float32")
+    veg_top = np.full((height, width), -np.inf, dtype="float32")
+    building = np.zeros((height, width), dtype=bool)
+
+    for path in paths:
+        with laspy.open(path) as reader:
+            for pts in reader.chunk_iterator(5_000_000):
+                x, y, z, cls = np.asarray(pts.x), np.asarray(pts.y), np.asarray(pts.z), np.asarray(pts.classification)
+                inside = (x >= minx) & (x < maxx) & (y > miny) & (y <= maxy)
+                if not inside.any():
+                    continue
+                x, y, z, cls = x[inside], y[inside], z[inside].astype("float32"), cls[inside]
+                col = ((x - minx) / res_m).astype(int)
+                row = ((maxy - y) / res_m).astype(int)
+                g = cls == LIDAR_GROUND
+                np.minimum.at(ground, (row[g], col[g]), z[g])
+                v = np.isin(cls, LIDAR_VEGETATION)
+                np.maximum.at(veg_top, (row[v], col[v]), z[v])
+                b = cls == LIDAR_BUILDING
+                building[row[b], col[b]] = True
+
+    has_ground = np.isfinite(ground)
+    ground = fillnodata(np.where(has_ground, ground, 0).astype("float32"), mask=has_ground.astype("uint8"),
+                        max_search_distance=200)
+    veg_height = np.where(np.isfinite(veg_top), np.clip(veg_top - ground, 0, None), 0).astype("float32")
+    veg_height[veg_height > LIDAR_MAX_TREE_M] = 0
+
+    transform = from_origin(minx, maxy, res_m, res_m)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    profile = dict(driver="COG", dtype="float32", count=2, width=width, height=height, crs=crs,
+                   transform=transform, compress="DEFLATE")
+    with rasterio.open(out, "w", **profile) as dst:
+        dst.write(veg_height, 1)
+        dst.write(building.astype("float32"), 2)
+        dst.set_band_description(1, "vegetation height above ground (m)")
+        dst.set_band_description(2, "building returns (1 = yes)")
+    return LidarResult(out, survey, veg_height, building, transform, crs)
+
+
+def lidar_check(trees: gpd.GeoDataFrame, lidar: LidarResult, min_height_m: float = 3.0,
+                min_canopy_pct: float = 25.0, canopy_m: float = 2.0) -> gpd.GeoDataFrame:
+    """Add lidar evidence to each detected crown and flag the ones that are not trees.
+
+    `canopy_pct` is the share of the box covered by vegetation taller than `canopy_m`.
+    A crown passes (`lidar_ok`) if that share is at least `min_canopy_pct` and its tallest
+    vegetation reaches `min_height_m`. Roofs fail because lidar classifies them as building,
+    and shrubs fail on height. Trees overhanging a roof still pass, because lidar returns
+    from the leaves are classified as vegetation.
+    """
+    from rasterio.windows import from_bounds
+
+    boxes = trees.to_crs(lidar.crs)
+    rows = []
+    for geom in boxes.geometry:
+        win = from_bounds(*geom.bounds, lidar.transform).round_offsets().round_lengths()
+        r0, c0 = max(int(win.row_off), 0), max(int(win.col_off), 0)
+        h = lidar.height[r0:r0 + int(win.height), c0:c0 + int(win.width)]
+        b = lidar.building[r0:r0 + int(win.height), c0:c0 + int(win.width)]
+        if h.size == 0:
+            rows.append((0.0, 0.0, 0.0))
+            continue
+        rows.append((float(h.max()), 100 * float((h >= canopy_m).mean()), 100 * float(b.mean())))
+
+    out = trees.copy()
+    out["lidar_height_m"] = [round(r[0], 1) for r in rows]
+    out["canopy_pct"] = [round(r[1]) for r in rows]
+    out["building_pct"] = [round(r[2]) for r in rows]
+    out["lidar_ok"] = (out["lidar_height_m"] >= min_height_m) & (out["canopy_pct"] >= min_canopy_pct)
+    return out
 
 
 # --------------------------------------------------------------------------- 4. Validation and QA

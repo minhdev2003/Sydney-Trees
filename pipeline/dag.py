@@ -65,6 +65,25 @@ def sydney_tree_count():
         return str(key)
 
     @task
+    def lidar_height_model() -> str:
+        """Rasterise the newest lidar survey once; later runs reuse the COG on S3."""
+        lidar = steps.lidar_rasters(BBOX, steps.find_lidar_tiles(BBOX))
+        if lidar is None:
+            raise RuntimeError("Lidar tiles missing; fetch them from the Requester Pays bucket first")
+        return str(lidar.path)
+
+    @task
+    def lidar_check(trees_key: str, lidar_key: str) -> str:
+        import rasterio
+
+        with rasterio.open(lidar_key) as src:
+            lidar = steps.LidarResult(lidar_key, "", src.read(1), src.read(2).astype(bool), src.transform, str(src.crs))
+        checked = steps.lidar_check(gpd.read_parquet(trees_key), lidar)
+        key = trees_key.replace("trees.parquet", "trees_checked.parquet")
+        checked[checked["lidar_ok"]].drop(columns="lidar_ok").to_parquet(key)
+        return key
+
+    @task
     def load_register() -> str:
         key = steps.S3 / "ground-truth" / "register.parquet"
         key.parent.mkdir(parents=True, exist_ok=True)
@@ -91,7 +110,7 @@ def sydney_tree_count():
 
     make_ndvi_cog(search_sentinel())
 
-    trees_key = detect(fetch_aerial())
+    trees_key = lidar_check(detect(fetch_aerial()), lidar_height_model())
     metrics = validate(trees_key, load_register())
     metrics >> qa_gate >> publish(trees_key, metrics)
 

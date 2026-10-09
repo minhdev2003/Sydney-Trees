@@ -3,10 +3,10 @@ revision = 5
 requires-python = ">=3.11, <3.13"
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'win32'",
-    "python_full_version < '3.12' and sys_platform == 'win32'",
     "python_full_version >= '3.12' and sys_platform == 'emscripten'",
-    "python_full_version < '3.12' and sys_platform == 'emscripten'",
     "python_full_version >= '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'emscripten'",
     "python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
@@ -1574,6 +1574,43 @@ wheels = [
 ]
 
 [[package]]
+name = "laspy"
+version = "2.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9c/5d/5a540ac25dcc57fa77691363bb753363b192a3759aefef4b40e1250ddb17/laspy-2.7.0.tar.gz", hash = "sha256:f56feb5445e75d6ff12ee814aab6a35339290e75264ff277c6bf553f3025a3f5", size = 1929624, upload-time = "2026-01-14T22:18:42.856Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ed/fb/ae27ebca327117e35cc717a3a87afdcbbf10d5aac52e405d16ebe777357e/laspy-2.7.0-py3-none-any.whl", hash = "sha256:15f5344c62a1023461996bdf5d1ba5fdd813e96694a524fee712931134f3792f", size = 86056, upload-time = "2026-01-14T22:18:40.779Z" },
+]
+
+[package.optional-dependencies]
+lazrs = [
+    { name = "lazrs" },
+]
+
+[[package]]
+name = "lazrs"
+version = "0.8.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/32/8d/98a802eda6478aa14132f330cc92baa2730200b40716aedfc2ed4aaaf895/lazrs-0.8.2.tar.gz", hash = "sha256:80a30ad1798a9fd58e84f238ca23f5002555ba16553e2afedafa6bde494229e2", size = 9866, upload-time = "2026-07-27T10:12:19.727Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ae/f0/eae983763e5babc3b42731dbb75de1aef17dcf8bf8885e5913827c3a2bb6/lazrs-0.8.2-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:ddeea17cd291fbf5e6a18e24440d25a7389d5a4cc3930466421a688464f5f188", size = 564910, upload-time = "2026-07-27T10:06:47.418Z" },
+    { url = "https://files.pythonhosted.org/packages/97/1e/8b80f896277a815280ab4fdf3d7cdbb98c01199ecd4ef16047252904c35a/lazrs-0.8.2-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:b5029d4a889f0a2eafc76857c37f9bb96dd223addd3e252339b66e88f9a0178f", size = 567279, upload-time = "2026-07-27T10:06:56.081Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/05/d5563a6b17b9ac1ccdff1db381dc9e6ac3ef0d6303fd9be00812906178b5/lazrs-0.8.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:fec70f58e6c4193f3816ec55a51bd3de4c7f2010572e880f8fcaae8eccd0a563", size = 634191, upload-time = "2026-07-27T10:07:05.24Z" },
+    { url = "https://files.pythonhosted.org/packages/41/ac/9236762ec15bc7b90061c8daa3256c480d2238107fb76da1bfdfb62c6c3d/lazrs-0.8.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:34d84a4e5874c03b986e7b69b1c972c5dfe023537a1ac4c198e3012f0042bb0a", size = 631025, upload-time = "2026-07-27T10:07:14.482Z" },
+    { url = "https://files.pythonhosted.org/packages/1f/a2/9e995ee520e3fdb508ec27d4374ab8cf43b7e441e50c536805235ee91282/lazrs-0.8.2-cp311-cp311-win32.whl", hash = "sha256:de20b66623bfcfd390112a4f43a2840405b1a4005bbaf512d1abe45d02845741", size = 414905, upload-time = "2026-07-27T10:07:21.33Z" },
+    { url = "https://files.pythonhosted.org/packages/d6/56/8c6cffc62bce1639d8793cb1e4f49f6475b931bd61e3061dc69e17d5b35c/lazrs-0.8.2-cp311-cp311-win_amd64.whl", hash = "sha256:29e49fb839ee82f014495cf79bb43559b64696b3440db878e340b4aab0b53df9", size = 436884, upload-time = "2026-07-27T10:07:28.246Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/5f/6efa6fa7bde5cfee3af5311015fb61d1a48522f6f10ccd6d292fc41f3cfe/lazrs-0.8.2-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:99ea3de5796d6c651d23ee0b130ad55477c49939cfc7a371f2f23cd1945db762", size = 564149, upload-time = "2026-07-27T10:07:36.82Z" },
+    { url = "https://files.pythonhosted.org/packages/a9/f6/cb15b15156413d0a69cc6e0b83ff74e096139acfeb3b6eb8eb82d96a7d02/lazrs-0.8.2-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:7b6d4680a75cf0b8594cbec3e4c0db1c839f78876750eeffdfbbb6684a487746", size = 561429, upload-time = "2026-07-27T10:07:45.878Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/82/b0024b0755b72718b09c5cbe441db3886b26e4c57fec6ddf4a6aac47d171/lazrs-0.8.2-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:237bdb78596dc0a2f7a953833787d7cb65da39025723caa922bb81e2a1391224", size = 629393, upload-time = "2026-07-27T10:07:55.011Z" },
+    { url = "https://files.pythonhosted.org/packages/16/e1/15266daf710ebcea7b45676d5ce040bb8136396f0d5b8706df4290473e9b/lazrs-0.8.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9e7d82b5ea4cb0e503970a619fb792dbbcdcb2cd8c3adf9c08fab3405abc8e60", size = 626911, upload-time = "2026-07-27T10:08:03.916Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/96/b7495f396371c91de26e46d18103d48b976b0b03148497b78573d5bf814f/lazrs-0.8.2-cp312-cp312-win32.whl", hash = "sha256:ad1dd71a70f3e93f2e9f52bad8cfddf981bde3245a9819d62a6af6fed60a23e8", size = 411690, upload-time = "2026-07-27T10:08:10.344Z" },
+    { url = "https://files.pythonhosted.org/packages/51/5d/03adf33c24c9c0bceeb234c44bcaa665aa72fc9ce8f5b64ac8b7c19d4378/lazrs-0.8.2-cp312-cp312-win_amd64.whl", hash = "sha256:213803fbaaf734d5ff3c886bb4a2d173ea24a31383c3cda5383b9bc16e8f0635", size = 433133, upload-time = "2026-07-27T10:08:17.122Z" },
+]
+
+[[package]]
 name = "lightning-utilities"
 version = "0.15.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1599,6 +1636,7 @@ dependencies = [
     { name = "httpx" },
     { name = "ipykernel" },
     { name = "jupyter" },
+    { name = "laspy", extra = ["lazrs"] },
     { name = "mapbox-vector-tile" },
     { name = "matplotlib" },
     { name = "mercantile" },
@@ -1627,6 +1665,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "ipykernel", specifier = ">=6.29" },
     { name = "jupyter", specifier = ">=1.0" },
+    { name = "laspy", extras = ["lazrs"], specifier = ">=2.5" },
     { name = "mapbox-vector-tile", specifier = ">=2.1" },
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "mercantile", specifier = ">=1.2" },

@@ -233,12 +233,12 @@ an AWS Batch job on a rented GPU. It reads chips from S3 and writes one crown pe
 Each chip is split into 800 px patches (80 m), which the model rescales to its 400 px input.
 DeepForest was trained on forest imagery where crowns are smaller than Sydney's street and park
 trees. With 400 px patches it split large crowns into several small boxes; 800 px gives one box per crown.
-A detection is kept if its score is at least 0.2 (chosen in section 4) and its centre lies in the
+A detection is kept if its score is at least 0.15 (chosen in section 4) and its centre lies in the
 chip's 100 m core, so trees in the overlap margin are not counted twice.
 """)
 
 code("""
-SCORE_THRESHOLD = 0.2
+SCORE_THRESHOLD = 0.15
 trees = steps.detect_trees(chips, score_threshold=SCORE_THRESHOLD)
 print(f"{len(trees):,} trees detected in {DEMO.to_crs(steps.METRIC_CRS).area.iloc[0] / 1e4:.0f} ha")
 trees[["score", "crown_area_m2", "crown_diameter_m"]].describe().round(2).T
@@ -269,6 +269,69 @@ ax.set_title(f"All {len(trees):,} detected crowns")
 plt.show()
 """)
 
+md("""
+### 3b. Lidar check: removing roofs and shrubs
+
+The detector only sees colour imagery, and some tile and iron roofs look like crowns to it (see the
+roof boxes in the chip above). Lidar settles it. NSW Spatial Services publishes classified point clouds
+through ELVIS (box 1, "Aerial and Lidar"), where every laser return is already labelled as ground,
+vegetation or building.
+
+**Production:** once per lidar survey, the tiles are rasterised into a 1 m vegetation height model (tallest
+vegetation return minus ground) and a building mask, and stored on S3 as a COG. Every monthly run then
+reads that COG.
+**Runs locally:** yes, if the tiles are in `data/cache/lidar/`. The NSW bucket is Requester Pays, so the
+tiles are ordered free from [ELVIS](https://elevation.fsdf.org.au) (emailed link) or fetched with AWS credentials.
+Without them this step is skipped and every detection is kept.
+
+A detection is kept if at least 25% of its box is vegetation over 2 m and the tallest vegetation reaches 3 m.
+A tree overhanging a roof still passes, because the returns from its leaves are classified as vegetation.
+The lidar is older than the imagery (May 2020 vs 2026). Trees planted since 2020 will be removed and trees
+felled since can still pass, so in production the lidar is refreshed whenever NSW flies a new survey.
+""")
+
+code("""
+lidar_tiles = steps.find_lidar_tiles(BBOX)
+display(lidar_tiles[["survey", "file_name", "size_mb"]])
+lidar = steps.lidar_rasters(BBOX, lidar_tiles)
+
+trees_raw, checked = trees, None
+if lidar is not None:
+    checked = steps.lidar_check(trees_raw, lidar)
+    trees = checked[checked["lidar_ok"]].drop(columns="lidar_ok").reset_index(drop=True)
+    print(f"Lidar survey {lidar.survey}: kept {len(trees):,} of {len(trees_raw):,} detections "
+          f"({(~checked['lidar_ok']).sum()} removed)")
+    display(checked.groupby("lidar_ok")[["lidar_height_m", "canopy_pct", "building_pct"]].median()
+            .rename(index={True: "kept", False: "removed"}).rename_axis("median per detection"))
+else:
+    print("Lidar check skipped: continuing with all detections")
+""")
+
+code("""
+if lidar is not None:
+    from rasterio.plot import plotting_extent
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 8))
+    ax = axes[0]
+    ext = plotting_extent(lidar.height, lidar.transform)
+    ax.imshow(np.where(lidar.building, 1.0, np.nan), cmap="Greys", vmin=0, vmax=2, extent=ext)
+    im = ax.imshow(np.where(lidar.height >= 2, lidar.height, np.nan), cmap="YlGn", vmin=0, vmax=25, extent=ext)
+    DEMO.to_crs(lidar.crs).boundary.plot(ax=ax, color="black", linewidth=1.5)
+    fig.colorbar(im, ax=ax, shrink=0.7, label="vegetation height above ground (m)")
+    ax.set_title(f"Lidar {lidar.survey}: vegetation over 2 m (green), buildings (grey)")
+    ax.set_axis_off()
+
+    ax = axes[1]
+    web = checked.to_crs(3857)
+    web[web["lidar_ok"]].boundary.plot(ax=ax, color="#ffeb3b", linewidth=1.5)
+    web[~web["lidar_ok"]].boundary.plot(ax=ax, color="#ff1744", linewidth=1.5)
+    b = chips.set_index("chip_id").loc["r2c2"].geometry.bounds
+    ax.set_xlim(b[0], b[2]); ax.set_ylim(b[1], b[3])
+    aerial(ax, zoom=19)
+    ax.set_title("Chip r2c2: kept (yellow) and removed by the lidar check (red)")
+    plt.show()
+""")
+
 # --------------------------------------------------------------------------- 4
 
 md("""
@@ -292,9 +355,14 @@ pd.Series(v.as_dict()).to_frame("value")
 """)
 
 code("""
+def detected_at(threshold):
+    d = steps.detect_trees(chips, score_threshold=threshold)
+    return d[steps.lidar_check(d, lidar)["lidar_ok"]] if lidar is not None else d
+
+
 sweep = []
 for t in (0.1, 0.15, 0.2, 0.25, 0.3, 0.4):
-    detected = steps.detect_trees(chips, score_threshold=t)
+    detected = detected_at(t)
     m = steps.validate(detected, register).as_dict()
     sweep.append({"score threshold": t, "trees detected": len(detected), "near register": m["detections_in_zone"],
                   "precision": m["precision"], "recall": m["recall"], "f1": m["f1"]})
@@ -302,9 +370,11 @@ pd.DataFrame(sweep).set_index("score threshold")
 """)
 
 md("""
-**Choosing the threshold.** Lowering the threshold below 0.2 adds detections quickly (the total nearly
-doubles by 0.1) but recall improves only slowly. That suggests most of the extra boxes are not trees
-(roofs, shrubs) in places the register cannot check. So 0.2 is used, where precision near register trees is about 0.9.
+**Choosing the threshold.** On imagery alone, lowering the threshold quickly adds boxes that are roofs
+and shrubs, which validation cannot see because they are away from register trees. The lidar check
+removes those at every threshold (the sweep above applies it), so a lower threshold becomes worthwhile.
+0.15 is used: it finds more register trees than 0.2 and keeps precision near register trees at about 0.9.
+Going down to 0.1 adds recall but lets in more low-confidence boxes that the lidar check has to remove.
 
 **Where recall is lost.** Recall depends strongly on tree size. Small, young street trees are often
 hidden under a neighbour's canopy or are too small to see, and rows of touching crowns can merge
@@ -318,10 +388,10 @@ pd.DataFrame({"register trees": found.groupby(height).size(), "recall": found.gr
 """)
 
 md("""
-This is the main limitation of an off-the-shelf model on aerial imagery alone. In production it is
-addressed by fine-tuning on the council register and adding a lidar canopy height model (box 1, ELVIS).
-The published count is the detected count; the recall figures are published with every run so users can
-judge how complete it is.
+This is the main limitation of an off-the-shelf model. The lidar check in section 3b removes false
+detections but cannot add missed trees, and trees under 3 m are removed by design. In production, recall is
+improved by fine-tuning the model on the council register. The published count is the detected count, and
+the recall figures are published with every run so users can judge how complete it is.
 
 **The QA gate.** The production thresholds (precision of at least 0.8, recall of at least 0.4) sit just below this
 baseline run, so the gate catches drift such as bad imagery or a broken model release. The run passes.
@@ -551,6 +621,7 @@ md("""
 |---|---|---|
 | Ingestion and orchestration | Step functions called in order; `pipeline/dag.py` printed | Airflow (MWAA or containerised) runs `sydney_tree_count` monthly |
 | Tree detection model | DeepForest on CPU, 36 chips | Same container on AWS Batch GPU (spot), chips listed from S3 |
+| Lidar check | ELVIS tiles in `data/cache/lidar/`, rasterised to a COG in `data/s3/raw/lidar/` | Tiles fetched from the Requester Pays bucket once per survey; the height model COG on S3 is reused every month |
 | Validation and QA | `validate()` + `qa_gate()` | Same functions; `ShortCircuitOperator` blocks `publish` |
 | Spatial database | DuckDB spatial, `data/store.duckdb` | PostGIS on RDS, GIST index on `geom` |
 | Object storage | `data/s3/` | S3 (`raw/`, `detections/`, `snapshots/`), versioned |

@@ -30,6 +30,11 @@ uv run python scripts/warm_cache.py      # first time only: downloads data, runs
 uv run jupyter lab notebooks/part2_walkthrough.ipynb
 ```
 
+**Optional: the lidar check (section 3b).** It removes detections that are roofs or shrubs. The NSW lidar
+bucket is Requester Pays, so order the tiles free from [ELVIS](https://elevation.fsdf.org.au): draw the
+demo area, choose *NSW Government - Spatial Services > Point Clouds*, and select the two `Sydney202005-LID1-C3-AHD_...laz`
+files. Save them to `data/cache/lidar/` and re-run the notebook. Without them the step is skipped.
+
 After the first run everything is cached in `data/cache/`, so the notebook re-runs in about a minute and works offline
 (apart from basemap tiles not already cached). To run the API as a real server:
 
