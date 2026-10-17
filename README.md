@@ -5,7 +5,7 @@ A small, runnable version of the production system for counting Sydney's trees.
 nine boxes of the system diagram in order. It runs real code on a 600 m x 600 m area of Redfern
 and shows each step's output. The notebook is committed with its outputs, so it can be read on GitHub without running anything.
 
-![System diagram](docs/part2_diagram.png)
+![System diagram](docs/part2-diagram.png)
 
 ## Layout
 
