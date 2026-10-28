@@ -1,4 +1,4 @@
-# Sydney Trees: Part 2 demo
+# Sydney Trees demo
 
 A small, runnable version of the production system for counting Sydney's trees.
 [`notebooks/part2_walkthrough.ipynb`](notebooks/part2_walkthrough.ipynb) walks through the
